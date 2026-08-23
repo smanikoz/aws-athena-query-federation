@@ -436,6 +436,35 @@ public class HiveMetadataHandlerTest
     }
 
     @Test
+    public void doGetSplits_whenConfigOptionsNull_doesNotAddFilterProperty() {
+        TableName tableName = new TableName(TEST_SCHEMA, TEST_TABLE);
+        Schema partitionSchema = this.hiveMetadataHandler.getPartitionSchema(CATALOG_NAME);
+        Set<String> partitionCols = partitionSchema.getFields().stream()
+                .map(Field::getName)
+                .collect(Collectors.toSet());
+
+        Constraints constraints = new Constraints(Collections.emptyMap(), Collections.emptyList(), Collections.emptyList(),
+                Constraints.DEFAULT_NO_LIMIT, Collections.emptyMap(), null);
+
+        SchemaBuilder schemaBuilder = SchemaBuilder.newBuilder();
+        schemaBuilder.addField(HiveConstants.BLOCK_PARTITION_COLUMN_NAME, org.apache.arrow.vector.types.Types.MinorType.VARCHAR.getType());
+        Block partitionsBlock = blockAllocator.createBlock(schemaBuilder.build());
+        partitionsBlock.setValue(HiveConstants.BLOCK_PARTITION_COLUMN_NAME, 0, "partition_0");
+        partitionsBlock.setRowCount(1);
+
+        // Null config options exercises the identity-config-options null guard in doGetSplits.
+        Mockito.when(this.federatedIdentity.getConfigOptions()).thenReturn(null);
+
+        GetSplitsRequest getSplitsRequest = new GetSplitsRequest(this.federatedIdentity, QUERY_ID, CATALOG_NAME,
+                tableName, partitionsBlock, new ArrayList<>(partitionCols), constraints, null);
+        GetSplitsResponse getSplitsResponse = this.hiveMetadataHandler.doGetSplits(blockAllocator, getSplitsRequest);
+
+        assertEquals(1, getSplitsResponse.getSplits().size());
+        getSplitsResponse.getSplits().forEach(split ->
+                assertEquals(null, split.getProperties().get(EnvironmentConstants.CATALOG_CASING_FILTER)));
+    }
+
+    @Test
     public void decodeContinuationToken_whenTokenIsOne_returnsNonNullTokenValue() throws Exception {
         TableName tableName = new TableName(TEST_SCHEMA, TEST_TABLE);
         Constraints constraints = Mockito.mock(Constraints.class);
